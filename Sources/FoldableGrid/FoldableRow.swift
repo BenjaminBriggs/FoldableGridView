@@ -48,9 +48,27 @@ private struct FoldRowLayout: Layout {
         subviews: Subviews,
         cache: inout ()
     ) -> CGSize {
-        let width =
-            proposal.width
-            ?? subviews.reduce(0) { $0 + $1.sizeThatFits(.unspecified).width }
+        // Cells are worked out across a width, and only a finite one: a stack probes how far its
+        // children stretch by offering infinity, and a row that divided infinity into cells put its
+        // first at 0 × ∞ — NaN — and trapped. Unspecified asks for the row's ideal width, the cells'
+        // own side by side; infinity is answered with infinity, as the full-width row it is.
+        guard let width = proposal.width, width.isFinite else {
+            let sizes = subviews.map { subview in
+                subview.sizeThatFits(
+                    ProposedViewSize(
+                        width: proposal.width,
+                        height: proposal.height
+                    )
+                )
+            }
+            let ideal =
+                sizes.reduce(0) { $0 + $1.width }
+                + spacing * CGFloat(max(0, subviews.count - 1))
+            return CGSize(
+                width: proposal.width == nil ? ideal : .infinity,
+                height: sizes.map(\.height).max() ?? 0
+            )
+        }
         let cells = FoldMath.cells(
             count: subviews.count,
             width: width,
